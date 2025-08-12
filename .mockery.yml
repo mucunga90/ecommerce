@@ -1,0 +1,32 @@
+all: false
+force-file-write: true
+formatter: goimports
+include-auto-generated: false
+log-level: info
+structname: '{{.Mock}}{{.InterfaceName}}'
+pkgname: 'mocks'
+recursive: false
+require-template-schema-exists: true
+template: testify
+template-schema: '{{.Template}}.schema.json'
+packages:
+  github.com/mucunga90/ecommerce/internal/api:
+    interfaces:
+      orderManager:
+        config:
+          dir: '{{.InterfaceDir}}/mocks'
+          filename: '{{.InterfaceName}}_mock.go'
+          pkgname: 'mocks'
+          structname: 'Mock{{.InterfaceName}}'
+      priceManager:
+        config:
+          dir: '{{.InterfaceDir}}/mocks'
+          filename: '{{.InterfaceName}}_mock.go'
+          pkgname: 'mocks'
+          structname: 'Mock{{.InterfaceName}}'
+      uploadManager:
+        config:
+          dir: '{{.InterfaceDir}}/mocks'
+          filename: '{{.InterfaceName}}_mock.go'
+          pkgname: 'mocks'
+          structname: 'Mock{{.InterfaceName}}'

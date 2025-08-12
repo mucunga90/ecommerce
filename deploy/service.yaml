@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: ecommerce-volume
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    component: ecommerce
+    function: events
+spec:
+  capacity:
+    storage: 1Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: "/data/ecommerce"
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: ecommerce-claim
+  namespace: ${K8S_NAMESPACE}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 500Mi
+  selector:
+    matchLabels:
+      component: ecommerce
+      function: events
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ecommerce
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app: ecommerce
+spec:
+  type: ClusterIP
+  selector:
+    app: ecommerce
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecommerce
+  namespace: ${K8S_NAMESPACE}
+  labels:
+    app: ecommerce
+  annotations:
+    rollout: ""
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ecommerce
+  template:
+    metadata:
+      labels:
+        app: ecommerce
+    spec:
+      imagePullSecrets:
+        - name: docker-registry
+      containers:
+        - name: ecommerce
+          image: ghcr.io/mucunga90/ecommerce:${K8S_VERSION}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: service-configmap
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: "125m"
+            limits:
+              memory: 512Mi
+              cpu: "250m"
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          volumeMounts:
+            - name: ecommerce-storage
+              mountPath: /shared
+      volumes:
+        - name: ecommerce-storage
+          persistentVolumeClaim:
+            claimName: ecommerce-claim
+
+# kubectl delete service ecommerce
+# kubectl delete deployment ecommerce

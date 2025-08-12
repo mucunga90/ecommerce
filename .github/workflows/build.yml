@@ -1,0 +1,92 @@
+# Trigger the workflow only when:
+# - a new pull request with any name/type is opened against the main and release/* branch
+# - a commit is directly pushed to the pull request
+  
+name: Build Backend
+  
+on:
+  push:
+    branches:
+      - main
+      - release/*
+  pull_request:
+    branches:
+      - main
+      - release/*
+  
+jobs:
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.23
+          go-version-file: './go.mod'
+
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Verify vendor
+        run: go mod vendor
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+      - name: Run staticcheck
+        run: staticcheck ./...
+
+      - name: Install golint
+        run: go install golang.org/x/lint/golint@latest
+
+      - name: Run golint
+        run: golint ./...
+
+  test:
+    name: Test
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        go: ["1.23"]
+    runs-on: ${{ matrix.os }}
+    needs: [build]
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 1.23
+          go-version-file: './go.mod'
+
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Vars
+        id: vars
+        run: |
+          echo "::set-output name=version_tag::${GITHUB_REF/refs\/tags\//}"
+          echo "::set-output name=go_cache::$(go env GOCACHE)"
+
+      - name: Cache the build cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.vars.outputs.go_cache }}
+          key: ${{ runner.os }}-go${{ matrix.go }}-release-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+                        ${{ runner.os }}-go${{ matrix.go }}-release
+
+      - name: Verify vendor
+        run: go mod vendor
+
+      - name: Test
+        run: go test -race -vet=off ./...

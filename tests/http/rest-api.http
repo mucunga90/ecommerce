@@ -1,0 +1,61 @@
+@host = 127.0.0.1:5001
+@contentType = application/json
+
+
+### Product Upload
+# @name ProductUpload
+POST  http://{{host}}/product/upload
+Content-Type: {{contentType}}
+
+
+[
+  {
+    "name": "Whole Wheat Bread",
+    "price": 70.0,
+    "categories": ["All Products", "Bakery", "Bread"]
+  },
+  {
+    "name": "Cookies",
+    "price": 50,
+    "categories": ["All Products", "Bakery", "Cookies"]
+  },
+  {
+    "name": "Watermelon",
+    "price": 30,
+    "categories": ["All Products", "Produce", "Fruits"]
+  },
+   {
+    "name": "Spinach",
+    "price": 20,
+    "categories": ["All Products", "Produce", "Vegetables"]
+  }
+]
+
+### Product Price
+# @name ProductPrice
+GET   http://{{host}}/product/prices?category=All%20Products
+Content-Type: {{contentType}}
+
+
+### Make Order
+# @name MakeOrder
+POST  http://{{host}}/product/order
+Content-Type: {{contentType}}
+
+{
+  
+  "items": [
+    {
+      "product_id": 1,
+      "quantity": 2,
+      "price": 70.0
+    },
+    {
+      "product_id": 2,
+      "quantity": 1,
+      "price": 50.0
+    }
+  ]
+}
+
+

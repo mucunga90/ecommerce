@@ -1,0 +1,119 @@
+# Trigger the workflow to deploy a specific git reference to a specific environment only when:
+# - the `workflow_dispatch` event is used in the UI.
+# This is ideal for environment such as production, staging or sandbox if you wish to make the
+  
+name: Deploy
+  
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Environment to deploy - options: test|prod"
+        required: true
+      ref:
+        description: "Git reference to deploy - example: branch/tag/sha"
+        required: true
+  
+jobs:
+
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    outputs:
+      repo: ${{ steps.vars.outputs.repo }}
+      commit: ${{ steps.vars.outputs.commit }}
+    steps:
+      - name: Deployment info
+        run: echo "Deploying '${{ github.event.inputs.ref }}' to '${{ github.event.inputs.env }}' environment"
+      - name: Verifying environment
+        run: |
+          envs=("test prod")
+          [[ ${envs[*]} =~ ${{ github.event.inputs.env }} ]] || { echo "Invalid environment"; exit 1; }
+      - name: Use repository
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.ref }}
+      - name: Build variables
+        id: vars
+        run: |
+          echo "::set-output name=repo::$GITHUB_REPOSITORY"
+          echo "::set-output name=commit::$(git rev-parse --short "$GITHUB_SHA")"
+      - name: Upload repository
+        uses: actions/upload-artifact@v4
+        with:
+          name: repository
+          path: |
+            ${{ github.workspace }}/cmd/server
+            ${{ github.workspace }}/deploy
+            ${{ github.workspace }}/internal
+            ${{ github.workspace }}/pkg
+            ${{ github.workspace }}/go.mod
+            ${{ github.workspace }}/go.sum
+            ${{ github.workspace }}/.dockerignore
+  
+  docker:
+    name: Docker
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download repository
+        uses: actions/download-artifact@v4
+        with:
+          name: repository
+      - name: Login to Github Packages
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
+      - name: Build and push image
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          file: ./deploy/Dockerfile
+          # tags: ${{ needs.setup.outputs.repo }}:${{ github.event.inputs.env }}
+          tags: ghcr.io/mucunga90/ecommerce:${{ github.event.inputs.ref }}
+          build-args: |
+            "COMMIT=${{ needs.setup.outputs.commit }}"
+  
+  deploy:
+    name: Deploy
+    needs: docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download repository
+        uses: actions/download-artifact@v4
+        with:
+          name: repository
+      - name: Install envsubst
+        run: |
+          sudo apt-get install gettext-base
+      - name: Install kubectl
+        run: |
+          curl -LO https://dl.k8s.io/release/v1.28.3/bin/linux/amd64/kubectl
+          curl -LO "https://dl.k8s.io/v1.28.3/bin/linux/amd64/kubectl.sha256"
+          echo "$(<kubectl.sha256) kubectl" | sha256sum --check
+          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+          kubectl version --client
+      - name: Create kube config
+        run: |
+          mkdir -p $HOME/.kube/
+          case ${{ github.event.inputs.env }} in 
+              prod)
+                  echo "${{ secrets.PROD_CLUSTER }}" > $HOME/.kube/config
+                  echo "${{ secrets.PROD_CLUSTER_CERT }}" > $HOME/.kube/cluster.crt
+                  echo "${{ secrets.PROD_CLUSTER_KEY }}" > $HOME/.kube/cluster.key
+                  ;;
+              test)
+                  echo "${{ secrets.TEST_CLUSTER }}" > $HOME/.kube/config
+                  echo "${{ secrets.TEST_SERVICE_CONFIG }}" > $HOME/.kube/service.properties
+                  ;;
+              *)
+                  echo "Invalid environment";
+                  exit 1;;
+          esac
+      - name: Deploy
+        run: |
+          export K8S_NAMESPACE=${{ github.event.inputs.env }}
+          export K8S_VERSION=${{ github.event.inputs.ref }}
+          envsubst < deploy/service.yaml | kubectl --kubeconfig $HOME/.kube/config apply -f -

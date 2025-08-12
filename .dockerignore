@@ -1,0 +1,20 @@
+.git/
+.github/
+.vscode/
+
+deploy/
+
+tests/
+
+# config files
+.dockerignore
+.gitignore
+.env
+*.md
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
